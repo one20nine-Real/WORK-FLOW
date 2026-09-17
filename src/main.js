@@ -1,5 +1,6 @@
 import './style.css'
-import { createSupportRequest, isSupabaseConfigured } from './supabase.js'
+import { createSupportRequest, isSupabaseConfigured, signIn, signUp } from './supabase.js'
+import { ALL_TEAMS, TEAM_GROUPS, TITLES, validateSignup } from './auth.js'
 
 const deals = [
   { id: 'DL-24019', name: 'OO기업 Cloud 전환', customer: 'OO기업', owner: '박지훈', engineer: '김서연', status: '제안 준비', region: '수도권', product: 'Cloud Infrastructure', value: '₩420M', updated: '오늘 09:24', progress: 68, accent: 'mint' },
@@ -13,12 +14,15 @@ const nav = [
   ['dashboard', '⌂', 'Dashboard'], ['requests', '＋', '기술지원 요청'], ['deals', '▣', 'Deal 관리'], ['calendar', '◷', '일정'], ['docs', '▤', '문서 / 산출물'], ['productivity', '◒', '생산성']
 ]
 let active = 'dashboard'
+let authMode = 'login'
+let isAuthed = false
 
 const app = document.querySelector('#app')
 function statusClass(status) { return ({ '제안 준비':'status-mint','고객 미팅 예정':'status-blue','기술검토':'status-purple','수주':'status-green','일정 조율':'status-orange' })[status] || 'status-gray' }
 function iconLabel(icon, text) { return `<span class="nav-icon">${icon}</span><span>${text}</span>` }
 
 function render() {
+  if (!isAuthed) { app.innerHTML = authScreen(); bindAuth(); return }
   app.innerHTML = `<div class="shell">
     <aside class="sidebar"><div class="brand"><div class="brand-mark">✓</div><div><strong>dealflow</strong><small>SUPPORT OPERATIONS</small></div></div>
       <div class="workspace"><span class="workspace-dot"></span><div><b>SA Operations</b><small>내부 업무 포털</small></div><span class="chevron">⌄</span></div>
@@ -28,6 +32,20 @@ function render() {
     <main class="main"><header><div class="crumb">SA Operations <span>/</span> ${active === 'dashboard' ? 'Dashboard' : nav.find(n=>n[0]===active)?.[2] || 'Dashboard'}</div><div class="header-actions"><button class="icon-btn">⌕</button><button class="icon-btn notification">♢<i></i></button><button class="help">?</button></div></header>${active==='dashboard'?dashboard():active==='deals'?dealList():genericPage(active)}</main>
   </div>${requestModal()}`
   bind()
+}
+
+function authScreen() {
+  const signup = authMode === 'signup'
+  return `<main class="auth-shell"><section class="auth-brand"><div class="brand-mark">✓</div><p class="eyebrow">SA SUPPORT OPERATIONS</p><h1>고객의 다음 가능성을<br/><span>함께 설계합니다.</span></h1><p>영업과 기술지원팀을 하나의 Deal Workspace로 연결하세요.</p><div class="auth-note"><span>✦</span><div><b>One Deal = One Workspace</b><small>요청부터 산출물까지, 하나의 흐름으로</small></div></div></section><section class="auth-panel"><div class="auth-card"><div class="auth-card-head"><p class="eyebrow">DEALFLOW PORTAL</p><h2>${signup ? '계정 만들기' : '다시 오신 것을 환영해요'}</h2><p>${signup ? '팀 정보를 입력하고 업무 포털을 시작하세요.' : '계정에 로그인해 업무를 이어가세요.'}</p></div><form id="auth-form">${signup ? `<label>이름<input name="name" required placeholder="홍길동" /></label><div class="form-grid"><label>직책<select name="title" required><option value="">선택</option>${TITLES.map(t=>`<option>${t}</option>`).join('')}</select></label><label>소속 팀<select name="team" required><option value="">선택</option>${Object.entries(TEAM_GROUPS).map(([group,teams])=>`<optgroup label="${group}">${teams.map(t=>`<option>${t}</option>`).join('')}</optgroup>`).join('')}</select></label></div>` : ''}<label>이메일<input name="email" type="email" required placeholder="name@company.com" /></label><label>비밀번호<input name="password" type="password" required placeholder="8자 이상 입력" /></label>${signup?'<p class="auth-security">▣ 비밀번호는 Supabase Auth로 안전하게 보호됩니다.</p>':''}<button class="primary auth-submit" type="submit">${signup ? '회원가입하기' : '로그인하기'} <span>→</span></button></form><div class="auth-switch">${signup ? '이미 계정이 있으신가요?' : '처음 방문하셨나요?'} <button id="auth-switch" type="button">${signup ? '로그인' : '회원가입'}</button></div>${!signup?'<div class="demo-hint">데모 로그인 · demo@dealflow.local / demo1234</div>':''}</div><small class="auth-footer">© 2026 dealflow · Internal use only</small></section></main>`
+}
+
+function bindAuth() {
+  document.querySelector('#auth-switch')?.addEventListener('click', () => { authMode = authMode === 'login' ? 'signup' : 'login'; render() })
+  document.querySelector('#auth-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault(); const data = Object.fromEntries(new FormData(e.target));
+    if (authMode === 'signup') { const check = validateSignup(data); if (!check.valid) return showToast(Object.values(check.errors)[0]); const result = await signUp(data); if (result.error) return showToast(result.error.message); showToast(result.demo ? '회원가입이 완료됐어요. 로그인해 주세요.' : '가입 확인 메일을 확인해 주세요.'); authMode = 'login'; render(); return }
+    const result = await signIn(data.email, data.password); if (result.error) return showToast(result.error.message); isAuthed = true; render()
+  })
 }
 
 function dashboard() { return `<section class="content"><div class="welcome-row"><div><p class="eyebrow">THURSDAY, SEPTEMBER 17, 2026</p><h1>좋은 아침이에요, 서연님 <span>✦</span></h1><p class="subtext">오늘도 고객의 다음 가능성을 함께 만들어보세요.</p></div><button class="primary" id="new-request">＋ 기술지원 요청</button></div>
